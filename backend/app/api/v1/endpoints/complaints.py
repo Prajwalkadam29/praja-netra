@@ -8,6 +8,7 @@ from app.schemas.complaint import ComplaintCreate, ComplaintResponse
 from fastapi import File, UploadFile
 from app.utils.file_handler import save_upload_file
 from app.models.evidence import Evidence, FileType
+from app.schemas.complaint import ComplaintUpdate
 
 router = APIRouter()
 
@@ -31,6 +32,18 @@ async def list_complaints(
     result = await db.execute(select(Complaint).offset(skip).limit(limit))
     return result.scalars().all()
 
+@router.get("/{complaint_id}", response_model=ComplaintResponse)
+async def get_complaint(
+    complaint_id: int, 
+    db: AsyncSession = Depends(get_db)
+):
+    """Retrieve a specific complaint by its ID."""
+    result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
+    db_complaint = result.scalar_one_or_none()
+    
+    if not db_complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    return db_complaint
 
 @router.post("/{complaint_id}/evidence")
 async def upload_evidence(
@@ -63,3 +76,42 @@ async def upload_evidence(
     await db.commit()
     
     return {"status": "success", "file_path": file_path}
+
+
+@router.patch("/{complaint_id}", response_model=ComplaintResponse)
+async def update_complaint(
+    complaint_id: int,
+    complaint_update: ComplaintUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update complaint status or severity (Administrative action)."""
+    result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
+    db_complaint = result.scalar_one_or_none()
+    
+    if not db_complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    # Update only the fields provided in the request
+    update_data = complaint_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_complaint, key, value)
+
+    await db.commit()
+    await db.refresh(db_complaint)
+    return db_complaint
+
+@router.delete("/{complaint_id}")
+async def delete_complaint(
+    complaint_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Remove a complaint and its associated evidence metadata."""
+    result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
+    db_complaint = result.scalar_one_or_none()
+    
+    if not db_complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    
+    await db.delete(db_complaint)
+    await db.commit()
+    return {"status": "success", "message": f"Complaint {complaint_id} deleted"}
