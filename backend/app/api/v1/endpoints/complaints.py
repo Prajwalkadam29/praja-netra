@@ -9,6 +9,7 @@ from fastapi import File, UploadFile
 from app.utils.file_handler import save_upload_file
 from app.models.evidence import Evidence, FileType
 from app.schemas.complaint import ComplaintUpdate
+from app.services.ai_service import ai_service
 
 router = APIRouter()
 
@@ -115,3 +116,30 @@ async def delete_complaint(
     await db.delete(db_complaint)
     await db.commit()
     return {"status": "success", "message": f"Complaint {complaint_id} deleted"}
+
+
+@router.post("/{complaint_id}/analyze")
+async def analyze_complaint(
+    complaint_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    # 1. Fetch complaint and evidence
+    result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
+    db_complaint = result.scalar_one_or_none()
+    
+    if not db_complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    # 2. Run Text Triage via Groq
+    ai_insights = await ai_service.triage_complaint(db_complaint.description)
+
+    # 3. Update the complaint with AI results
+    db_complaint.severity_score = ai_insights.get("severity", 1)
+    # Note: In a real app, you'd store the 'summary_en' in a new column
+    
+    await db.commit()
+    
+    return {
+        "complaint_id": complaint_id,
+        "ai_analysis": ai_insights
+    }
