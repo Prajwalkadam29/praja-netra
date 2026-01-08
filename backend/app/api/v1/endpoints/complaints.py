@@ -123,23 +123,30 @@ async def analyze_complaint(
     complaint_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Fetch complaint and evidence
     result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
     db_complaint = result.scalar_one_or_none()
     
     if not db_complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    # 2. Run Text Triage via Groq
-    ai_insights = await ai_service.triage_complaint(db_complaint.description)
+    # Combine title and description for full context analysis
+    full_text = f"Title: {db_complaint.title}. Description: {db_complaint.description}"
+    ai_insights = await ai_service.triage_complaint(full_text)
 
-    # 3. Update the complaint with AI results
+    # Store translations and scores
     db_complaint.severity_score = ai_insights.get("severity", 1)
-    # Note: In a real app, you'd store the 'summary_en' in a new column
+    db_complaint.title_en = ai_insights.get("translated_title_en")
+    db_complaint.summary_en = ai_insights.get("summary_en")
     
     await db.commit()
+    await db.refresh(db_complaint)
     
     return {
         "complaint_id": complaint_id,
+        "original_language": ai_insights.get("detected_language"),
+        "english_version": {
+            "title": db_complaint.title_en,
+            "summary": db_complaint.summary_en
+        },
         "ai_analysis": ai_insights
     }

@@ -10,24 +10,25 @@ async def analyze_complaint_text(text: str):
     Handles English and Marathi (Translation + Triage).
     """
     prompt = f"""
-    You are an expert legal assistant for the Pune Anti-Corruption Bureau.
-    Analyze the following complaint text and return a valid JSON object.
+    You are an expert multilingual legal assistant.
+    Analyze the following complaint (which may be in any language) and translate it into English for administrative review.
     
     COMPLAINT TEXT: "{text}"
 
     INSTRUCTIONS:
-    1. Detect the language.
-    2. If the text is in Marathi, translate the summary into clear English.
-    3. Categorize the complaint (e.g., bribery, nepotism, fraud, civic_issue).
-    4. Rate the severity from 1 to 10 (10 being most severe/urgent).
-    5. Determine if it requires immediate police/official intervention (is_urgent).
+    1. Detect the primary language.
+    2. Translate the TITLE of the issue into a concise English title.
+    3. Translate the DESCRIPTION into a clear English summary.
+    4. Categorize: bribery, nepotism, fraud, civic_issue, or harassment.
+    5. Rate severity 1-10.
 
     STRICT JSON RESPONSE FORMAT:
     {{
+        "detected_language": "string",
+        "translated_title_en": "string",
+        "summary_en": "string",
         "category": "string",
         "severity": integer,
-        "summary_en": "string",
-        "detected_language": "string",
         "is_urgent": boolean
     }}
     """

@@ -22,6 +22,8 @@ class Complaint(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
+    title_en = Column(String(255), nullable=True)   # AI Translated Title
+    summary_en = Column(Text, nullable=True)         # AI Translated Summary
     description = Column(Text)
     complaint_type = Column(Enum(ComplaintType), nullable=False)
     status = Column(Enum(ComplaintStatus), default=ComplaintStatus.SUBMITTED)

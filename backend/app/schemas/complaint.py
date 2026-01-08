@@ -21,6 +21,8 @@ class ComplaintResponse(ComplaintBase):
     id: int
     status: ComplaintStatus
     severity_score: int
+    title_en: Optional[str] = None
+    summary_en: Optional[str] = None
     filed_at: datetime
     blockchain_hash: Optional[str] = None
 
