@@ -26,3 +26,6 @@ backend/app/api/v1/__pycache__/
 backend/app/api/v1/endpoints/__pycache__/
 
 backend/uploads/
+
+.idea
+backend/chroma_db
