@@ -105,25 +105,30 @@ async def process_analysis(complaint_id: int):
             text=analysis_summary,
             metadata={
                 "category": text_analysis.get("category"),
-                "location": db_complaint.location or "Unknown"
+                "location": str(db_complaint.location).lower()  # Normalize location
             }
         )
 
-        # B. Search for Clusters (Looking for systemic issues)
+        # B. Search with Location Filtering
+        # In Production, we'd use GPS distance, but for now, we filter by the 'location' keyword
         similar_cases = await embedding_service.find_similar_cases(
             text=analysis_summary,
             limit=10,
-            distance_threshold=0.4  # Strict threshold for corruption hotspots
+            distance_threshold=0.45
         )
 
-        # C. Corroborative Boosting
-        # If > 3 similar cases exist, boost severity by 2 points
-        if len(similar_cases) > 3:
-            logger.warning(f"⚠️ PATTERN ALERT: Found {len(similar_cases)} similar reports. Boosting severity.")
-            final_score += 2.0
+        # C. Filter similar cases that share the SAME location string
+        # This prevents a Baner complaint from being linked to a Hadapsar one
+        location_matches = [
+            c for c in similar_cases
+            if c['metadata'].get('location', '').lower() in str(db_complaint.location).lower()
+        ]
 
-        if is_urgent_text:
-            final_score = max(final_score, 8.5)
+        if len(location_matches) >= 3:
+            logger.warning(f"⚠️ SYSTEMIC CLUSTER DETECTED in {db_complaint.location}!")
+            # Boost score based on cluster size
+            pattern_boost = len(location_matches) * 0.5
+            final_score += min(3.0, pattern_boost)  # Max boost of 3 points
 
         # 6. Final Data Updates
         db_complaint.severity_score = int(round(max(1, min(10, final_score))))
