@@ -30,3 +30,6 @@ python-magic==0.4.27
 celery==5.3.6
 redis==5.0.1
 exif==1.6.0
+
+
+sentence-transformers==3.0.1
