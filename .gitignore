@@ -11,7 +11,6 @@ backend/app/services/__pycache__/
 backend/app/utils/__pycache__/
 backend/app/tests/__pycache__/
 backend/app/tests/data/
-backend/app/tests/__pycache__/
 backend/app/tests/data/__pycache__/
 backend/migrations/versions/*.pyc
 backend/migrations/versions/__pycache__/
