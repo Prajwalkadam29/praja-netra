@@ -7,6 +7,7 @@ from app.models.cluster import CaseCluster
 from app.services.ai_service import ai_service
 from app.services.gemini_service import extract_exif_data
 from app.services.embedding_service import embedding_service
+from app.services.blockchain_service import blockchain_service
 from sqlalchemy import select, update, func
 from datetime import datetime
 import asyncio
@@ -167,6 +168,26 @@ async def process_analysis(complaint_id: int):
         if is_urgent_text: final_score = max(final_score, 8.5)
         db_complaint.severity_score = int(round(max(1, min(10, final_score))))
         db_complaint.analysis_status = "completed"
+
+        # 7. BLOCKCHAIN ANCHORING (Feature: Immutable Proof of Stake)
+        evidence_hashes = [ev.file_hash for ev in evidences if ev.file_hash]
+
+        manifest_hash = blockchain_service.generate_manifest_hash(
+            complaint_data={
+                "id": db_complaint.id,
+                "description": db_complaint.description,
+                "severity": db_complaint.severity_score,
+                "filed_at": db_complaint.filed_at
+            },
+            evidence_hashes=evidence_hashes
+        )
+
+        logger.info(f"🔗 Anchoring Manifest to Blockchain for ID {complaint_id}...")
+        tx_id = await blockchain_service.anchor_to_blockchain(db_complaint.id, manifest_hash)
+
+        if tx_id:
+            db_complaint.blockchain_hash = tx_id
+            logger.info(f"🔒 Case Sealed! TXID: {tx_id}")
 
         await db.commit()
         logger.info(f"✅ Full Intelligence Loop Complete for ID {complaint_id}. Cluster ID: {db_complaint.cluster_id}")

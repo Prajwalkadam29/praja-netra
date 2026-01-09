@@ -37,3 +37,5 @@ class Complaint(Base):
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
     analysis_status = Column(String(20), default="pending") # pending, processing, completed, failed
     cluster_id = Column(Integer, ForeignKey("case_clusters.id"), nullable=True)
+
+    is_deleted = Column(Boolean, default=False)

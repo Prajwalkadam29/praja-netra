@@ -11,6 +11,7 @@ from app.models.evidence import Evidence, FileType
 from app.schemas.complaint import ComplaintUpdate
 from app.services.ai_service import ai_service
 from app.worker import analyze_complaint_task
+from app.services.blockchain_service import blockchain_service
 
 
 router = APIRouter()
@@ -115,21 +116,19 @@ async def update_complaint(
     await db.refresh(db_complaint)
     return db_complaint
 
+
 @router.delete("/{complaint_id}")
-async def delete_complaint(
-    complaint_id: int,
-    db: AsyncSession = Depends(get_db)
-):
-    """Remove a complaint and its associated evidence metadata."""
+async def delete_complaint(complaint_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
     db_complaint = result.scalar_one_or_none()
-    
+
     if not db_complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
-    
-    await db.delete(db_complaint)
+
+    # PRODUCTION LOGIC: Soft Delete
+    db_complaint.is_deleted = True
     await db.commit()
-    return {"status": "success", "message": f"Complaint {complaint_id} deleted"}
+    return {"status": "success", "message": f"Complaint {complaint_id} archived (Soft Deleted)"}
 
 
 # @router.post("/{complaint_id}/analyze")
@@ -194,4 +193,41 @@ async def trigger_analysis(
         "status": "Accepted",
         "message": "AI analysis has started in the background.",
         "complaint_id": complaint_id
+    }
+
+
+@router.get("/{complaint_id}/verify-integrity")
+async def verify_complaint_integrity(
+    complaint_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    # 1. Fetch current data from SQL
+    result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
+    db_complaint = result.scalar_one_or_none()
+    if not db_complaint or not db_complaint.blockchain_hash:
+        raise HTTPException(status_code=400, detail="Complaint not anchored on blockchain.")
+
+    # 2. Get Evidence Hashes
+    ev_result = await db.execute(select(Evidence).filter(Evidence.complaint_id == complaint_id))
+    evidence_hashes = [ev.file_hash for ev in ev_result.scalars().all() if ev.file_hash]
+
+    # 3. Generate a "Current" Manifest Hash
+    current_hash = blockchain_service.generate_manifest_hash(
+        complaint_data={
+            "id": db_complaint.id,
+            "description": db_complaint.description,
+            "severity": db_complaint.severity_score,
+            "filed_at": db_complaint.filed_at
+        },
+        evidence_hashes=evidence_hashes
+    )
+
+    # 4. Compare with On-Chain Data
+    is_valid = await blockchain_service.verify_integrity(complaint_id, current_hash)
+
+    return {
+        "complaint_id": complaint_id,
+        "is_tampered": not is_valid,
+        "blockchain_tx": db_complaint.blockchain_hash,
+        "status": "Verified ✅" if is_valid else "TAMPERING DETECTED ❌"
     }

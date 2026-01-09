@@ -16,6 +16,10 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.12
 
+# Web3
+web3==6.11.1
+py-solc-x
+
 # --- AI & External APIs ---
 groq==0.11.0
 google-generativeai==0.8.3
