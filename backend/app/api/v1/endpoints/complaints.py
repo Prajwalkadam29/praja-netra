@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
 from app.database import get_db
-from app.models.complaint import Complaint
+from app.models.complaint import Complaint, ComplaintType, ComplaintStatus
 from app.schemas.complaint import ComplaintCreate, ComplaintResponse
 from fastapi import File, UploadFile
 from app.utils.file_handler import save_upload_file, get_file_hash
@@ -12,6 +12,7 @@ from app.schemas.complaint import ComplaintUpdate
 from app.services.ai_service import ai_service
 from app.worker import analyze_complaint_task
 from app.services.blockchain_service import blockchain_service
+from app.services.stt_service import stt_service
 
 
 router = APIRouter()
@@ -230,4 +231,58 @@ async def verify_complaint_integrity(
         "is_tampered": not is_valid,
         "blockchain_tx": db_complaint.blockchain_hash,
         "status": "Verified ✅" if is_valid else "TAMPERING DETECTED ❌"
+    }
+
+
+@router.post("/voice-submit")
+async def create_complaint_via_voice(
+        location: str,
+        file: UploadFile = File(...),
+        db: AsyncSession = Depends(get_db)
+):
+    """
+    Production-Grade Voice Reporting:
+    1. Save audio file.
+    2. Transcribe using Whisper.
+    3. Create a Complaint record using the transcript as the description.
+    """
+    # 1. Save the audio temporarily
+    temp_path = await save_upload_file(file)
+
+    # 2. Transcribe
+    transcript = await stt_service.transcribe_audio(temp_path)
+    if not transcript:
+        raise HTTPException(status_code=500, detail="Could not process audio.")
+
+    # 3. Auto-generate a title using the transcript (using first 50 chars or AI)
+    generated_title = transcript[:50] + "..." if len(transcript) > 50 else transcript
+
+    # 4. Create Complaint
+    new_complaint = Complaint(
+        title=f"Voice Report: {generated_title}",
+        description=transcript,
+        complaint_type=ComplaintType.OTHERS,  # Default, AI will refine this in /analyze
+        location=location,
+        status=ComplaintStatus.SUBMITTED
+    )
+
+    db.add(new_complaint)
+    await db.commit()
+    await db.refresh(new_complaint)
+
+    # 5. Link audio as evidence
+    f_hash = await get_file_hash(file)
+    new_evidence = Evidence(
+        complaint_id=new_complaint.id,
+        file_type=FileType.AUDIO,
+        file_url=temp_path,
+        file_hash=f_hash
+    )
+    db.add(new_evidence)
+    await db.commit()
+
+    return {
+        "status": "success",
+        "complaint_id": new_complaint.id,
+        "transcript": transcript
     }
