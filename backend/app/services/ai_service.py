@@ -7,7 +7,7 @@ class AIService:
         return await analyze_complaint_text(description)
 
     @staticmethod
-    async def process_evidence(file_path: str):
-        return await analyze_evidence_image(file_path)
+    async def process_evidence(file_path: str, description: str):
+        return await analyze_evidence_image(file_path, description)
 
 ai_service = AIService()

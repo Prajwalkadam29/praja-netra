@@ -35,3 +35,4 @@ class Complaint(Base):
     
     # department_id will be linked once we create the department model
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    analysis_status = Column(String(20), default="pending") # pending, processing, completed, failed

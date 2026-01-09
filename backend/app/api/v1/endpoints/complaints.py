@@ -10,6 +10,8 @@ from app.utils.file_handler import save_upload_file
 from app.models.evidence import Evidence, FileType
 from app.schemas.complaint import ComplaintUpdate
 from app.services.ai_service import ai_service
+from app.worker import analyze_complaint_task
+
 
 router = APIRouter()
 
@@ -118,35 +120,66 @@ async def delete_complaint(
     return {"status": "success", "message": f"Complaint {complaint_id} deleted"}
 
 
+# @router.post("/{complaint_id}/analyze")
+# async def analyze_complaint(
+#     complaint_id: int,
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
+#     db_complaint = result.scalar_one_or_none()
+    
+#     if not db_complaint:
+#         raise HTTPException(status_code=404, detail="Complaint not found")
+
+#     # Combine title and description for full context analysis
+#     full_text = f"Title: {db_complaint.title}. Description: {db_complaint.description}"
+#     ai_insights = await ai_service.triage_complaint(full_text)
+
+#     # Store translations and scores
+#     db_complaint.severity_score = ai_insights.get("severity", 1)
+#     db_complaint.title_en = ai_insights.get("translated_title_en")
+#     db_complaint.summary_en = ai_insights.get("summary_en")
+    
+#     await db.commit()
+#     await db.refresh(db_complaint)
+    
+#     return {
+#         "complaint_id": complaint_id,
+#         "original_language": ai_insights.get("detected_language"),
+#         "english_version": {
+#             "title": db_complaint.title_en,
+#             "summary": db_complaint.summary_en
+#         },
+#         "ai_analysis": ai_insights
+#     }
+
+
 @router.post("/{complaint_id}/analyze")
-async def analyze_complaint(
-    complaint_id: int,
+async def trigger_analysis(
+    complaint_id: int, 
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Production-grade Asynchronous Endpoint:
+    1. Validates complaint existence.
+    2. Sets status to 'processing'.
+    3. Offloads AI work to Celery/Redis.
+    """
     result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
     db_complaint = result.scalar_one_or_none()
     
     if not db_complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    # Combine title and description for full context analysis
-    full_text = f"Title: {db_complaint.title}. Description: {db_complaint.description}"
-    ai_insights = await ai_service.triage_complaint(full_text)
-
-    # Store translations and scores
-    db_complaint.severity_score = ai_insights.get("severity", 1)
-    db_complaint.title_en = ai_insights.get("translated_title_en")
-    db_complaint.summary_en = ai_insights.get("summary_en")
-    
+    # Update status so the frontend knows AI is working
+    db_complaint.analysis_status = "processing"
     await db.commit()
-    await db.refresh(db_complaint)
+
+    # Trigger the background task (Celery)
+    analyze_complaint_task.delay(complaint_id)
     
     return {
-        "complaint_id": complaint_id,
-        "original_language": ai_insights.get("detected_language"),
-        "english_version": {
-            "title": db_complaint.title_en,
-            "summary": db_complaint.summary_en
-        },
-        "ai_analysis": ai_insights
+        "status": "Accepted",
+        "message": "AI analysis has started in the background.",
+        "complaint_id": complaint_id
     }
