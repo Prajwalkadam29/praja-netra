@@ -6,7 +6,7 @@ from app.database import get_db
 from app.models.complaint import Complaint
 from app.schemas.complaint import ComplaintCreate, ComplaintResponse
 from fastapi import File, UploadFile
-from app.utils.file_handler import save_upload_file
+from app.utils.file_handler import save_upload_file, get_file_hash
 from app.models.evidence import Evidence, FileType
 from app.schemas.complaint import ComplaintUpdate
 from app.services.ai_service import ai_service
@@ -59,6 +59,17 @@ async def upload_evidence(
     if not result.scalar():
         raise HTTPException(status_code=404, detail="Complaint not found")
 
+    # 1. Generate Hash
+    f_hash = await get_file_hash(file)
+
+    # 2. FEATURE 4: Check if this file has EVER been uploaded before
+    existing_ev = await db.execute(select(Evidence).filter(Evidence.file_hash == f_hash))
+    if existing_ev.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Duplicate Evidence: This file has already been submitted in another report."
+        )
+
     # 2. Save file to disk
     file_path = await save_upload_file(file)
 
@@ -73,7 +84,8 @@ async def upload_evidence(
     new_evidence = Evidence(
         complaint_id=complaint_id,
         file_type=f_type,
-        file_url=file_path
+        file_url=file_path,
+        file_hash=f_hash  # Store the hash
     )
     db.add(new_evidence)
     await db.commit()

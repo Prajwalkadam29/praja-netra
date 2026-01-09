@@ -16,7 +16,7 @@ class Evidence(Base):
     complaint_id = Column(Integer, ForeignKey("complaints.id", ondelete="CASCADE"))
     file_type = Column(Enum(FileType), nullable=False)
     file_url = Column(String, nullable=False) # Local path or Cloud URL
-    file_hash = Column(String(255), nullable=True)
+    file_hash = Column(String(255), unique=True, index=True, nullable=True)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # New Production-Grade Columns

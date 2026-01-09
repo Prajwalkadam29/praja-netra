@@ -3,7 +3,10 @@ from app.config import settings
 from PIL import Image
 from exif import Image as ExifImage
 import json
+import re
+import logging
 
+logger = logging.getLogger(__name__)
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 def extract_exif_data(file_path: str):
@@ -17,7 +20,8 @@ def extract_exif_data(file_path: str):
                 "lon": str(getattr(img, "gps_longitude", "")),
                 "time": str(getattr(img, "datetime_original", ""))
             }
-    except:
+    except Exception as e:
+        logger.error(f"EXIF Extraction error: {e}")
         return None
     return None
 
@@ -25,7 +29,8 @@ async def analyze_evidence_image(image_path: str, description: str):
     """
     The 'Truth Engine': Analyzes image and cross-references with text description.
     """
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Use the stable model name
+    model = genai.GenerativeModel(model_name="gemini-1.5-flash")
     img = Image.open(image_path)
     
     prompt = f"""
@@ -37,6 +42,8 @@ async def analyze_evidence_image(image_path: str, description: str):
     2. confidence_score: (int 1-10) How strong is this evidence?
     3. detected_text: (string) Any OCR text like license plates or names.
     4. remarks: (string) Short explanation of why it is or isn't relevant.
+    
+    STRICT JSON ONLY. No markdown, no backticks.
 
     RESPONSE FORMAT:
     {{
@@ -46,8 +53,12 @@ async def analyze_evidence_image(image_path: str, description: str):
         "remarks": "string"
     }}
     """
-    
-    response = model.generate_content([prompt, img])
-    # Cleaning the response text to ensure it's valid JSON
-    clean_json = response.text.replace("```json", "").replace("```", "").strip()
-    return json.loads(clean_json)
+
+    try:
+        response = model.generate_content([prompt, img])
+        # Clean potential markdown backticks
+        clean_json = re.sub(r'```json\s*|```', '', response.text).strip()
+        return json.loads(clean_json)
+    except Exception as e:
+        logger.error(f"Gemini analysis failed: {e}")
+        return {"is_relevant": True, "confidence_score": 5, "remarks": "AI analysis unavailable"}
