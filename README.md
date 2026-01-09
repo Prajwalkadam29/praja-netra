@@ -5,11 +5,31 @@ Project Prajā-Netra is a production-grade, next-generation platform designed to
 
 ---
 
-## 🚀 Core Pillars
-- **Radical Accessibility:** Report in any language (Marathi, Hindi, English, etc.) via text or image.
-- **AI-Driven Triage:** Automated severity scoring and categorization using LLMs.
-- **Evidence Validation:** A "Truth Engine" that cross-references visual evidence with text descriptions.
-- **Scalable Architecture:** Built with an asynchronous, non-blocking background tasking system.
+## 🚀 Core Features & Intelligence Layers
+
+### 1. Radical Accessibility (Multilingual Triage)
+* **Automatic Language Detection:** Citizens can report in Marathi, Hindi, English, or mixed "Hinglish."
+
+* **Administrative Translation:** The system automatically generates standardized English titles and summaries for every report while preserving the original cultural context.
+
+
+### 2. Multimodal "Truth Engine"
+* **Visual Verification:** Google Gemini 1.5 Flash validates if uploaded photos (evidence) actually support the text description.
+
+* **Forensic Metadata Check:** The system extracts embedded EXIF data (GPS and Timestamp). If a photo is "stale" (older than 30 days) or taken in a different city, the system automatically penalizes the trust score.
+
+
+### 3. The Case Connector (Semantic Clustering)
+* **Systemic Pattern Detection:** Using **ChromaDB**, the system identifies similar complaints filed by different people in the same neighborhood.
+
+* **Recursive Back-linking:** When a "hotspot" is identified, all related past complaints are automatically grouped into a single **Case Cluster**.
+
+* **Sliding Scale Boosting:** Severity scores are dynamically boosted based on the density of similar reports in a specific zone.
+
+
+### 4. Scalable Asynchronous Architecture
+* **Non-Blocking API:** All heavy AI processing (Vision/Text/Vectors) is offloaded to a **Celery Worker** fleet via **Redis**, ensuring the user interface remains lightning-fast.
+
 
 ---
 
@@ -20,6 +40,7 @@ Project Prajā-Netra is a production-grade, next-generation platform designed to
 - **AI Orchestration:**
   - **Groq (Llama 3.3 70B):** For lightning-fast multilingual text analysis and translation.
   - **Google Gemini 1.5 Flash:** For multimodal vision analysis and evidence cross-validation.
+  - **Sentence-Transformers:** Local vector embedding generation (`all-MiniLM-L6-v2`).
 - **ORM:** SQLAlchemy 2.0 (Async)
 - **Validation:** Pydantic V2
 
@@ -46,11 +67,40 @@ Prajā-Netra uses a **distributed architecture** to ensure high performance unde
 | `PATCH` | `/api/v1/complaints/{id}` | Update status or severity (Admin). |
 | `DELETE` | `/api/v1/complaints/{id}` | Remove complaint and associated evidence. |
 
+**POST Body Example:**
+```json
+{
+    "title": "पाणी टँकर माफिया",
+    "description": "बाणेर बालेवाडी पट्ट्यात टँकर चालक ५०० रुपये लाच मागत आहेत.",
+    "complaint_type": "others",
+    "location": "Baner, Pune",
+    "is_anonymous": true
+}
+```
+
 ### 📁 Evidence & Intelligence
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `POST` | `/api/v1/complaints/{id}/evidence` | Upload images/documents as proof. |
 | `POST` | `/api/v1/complaints/{id}/analyze` | **Trigger Background AI Analysis.** (Returns immediate receipt). |
+
+**Analyze Response Example:**
+```json
+{
+    "status": "Accepted",
+    "message": "AI analysis has started in the background.",
+    "complaint_id": 1
+}
+```
+
+---
+## ⚙️ Environment Variables (`.env`)
+```dotenv
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost/praja_netra
+REDIS_URL=redis://localhost:6379/0
+GROQ_API_KEY=your_groq_key
+GEMINI_API_KEY=your_gemini_key
+```
 
 ---
 
@@ -61,11 +111,11 @@ Prajā-Netra uses a **distributed architecture** to ensure high performance unde
 - [x] **Truth Engine (Vision):** Gemini-powered validation to detect if images match the complaint or are "spam/placeholders."
 - [x] **Multi-Image Support:** Weighted scoring based on multiple pieces of evidence.
 - [x] **Production Logging:** Comprehensive server and worker logs for debugging.
+- [x] **The Case Connector:** Integrated **ChromaDB (Vector DB)** to detect clusters of corruption across different reports.
 
 ---
 
 ## 📅 Future Roadmap
-- **Module 5: The Case Connector:** Integrating **ChromaDB (Vector DB)** to detect clusters of corruption across different reports.
 - **Module 6: Blockchain Integrity:** Hashing report data on-chain to prevent record tampering.
 - **Module 7: Anonymization Layer:** Auto-redacting PII (Names/Faces) from public-facing data.
 - **Module 8: Dashboard & GIS:** Next.js frontend with heatmaps showing "Corruption Hotspots" in Pune.
