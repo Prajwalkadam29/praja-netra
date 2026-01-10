@@ -38,3 +38,8 @@ exif==1.6.0
 
 sentence-transformers==3.0.1
 pydub==0.25.1
+
+# Jwt and Google OAuth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+google-auth==2.22.0

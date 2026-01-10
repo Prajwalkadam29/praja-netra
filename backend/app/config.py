@@ -20,9 +20,10 @@ class Settings(BaseSettings):
     CONTRACT_ADDRESS: str
     
     # Security
-    SECRET_KEY: str
+    SECRET_KEY: str = "change_me_in_production" # Generate a random string for this
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 11520
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    GOOGLE_CLIENT_ID: str = "placeholder_id" # From Google Cloud Console
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 

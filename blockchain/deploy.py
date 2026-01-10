@@ -7,7 +7,7 @@ import os
 RPC_URL = "http://127.0.0.1:7545"
 w3 = Web3(Web3.HTTPProvider(RPC_URL))
 # Use the first account provided by Ganache
-private_key = "0x3a097fe72748dc11c4fdf0f70cdd77d3b025da00028767b4e99f07a60c24fbed"
+private_key = "0x879be279c458418c8fe71644ae83c358c787dd0ba21f067cddc758ea471f1f7c"
 account_address = w3.eth.account.from_key(private_key).address
 
 # 2. Compile Solidity

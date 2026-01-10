@@ -13,6 +13,8 @@ from app.services.ai_service import ai_service
 from app.worker import analyze_complaint_task
 from app.services.blockchain_service import blockchain_service
 from app.services.stt_service import stt_service
+from app.api.deps import get_current_user
+from app.models.user import User, UserRole # Fixed Import
 
 
 router = APIRouter()
@@ -20,46 +22,71 @@ router = APIRouter()
 @router.post("/", response_model=ComplaintResponse)
 async def create_complaint(
     complaint_in: ComplaintCreate, 
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user) # PROTECTED
 ):
-    db_complaint = Complaint(**complaint_in.model_dump())
+    db_complaint = Complaint(
+        **complaint_in.model_dump(),
+        user_id=current_user.id # Linking complaint to user
+    )
     db.add(db_complaint)
     await db.commit()
     await db.refresh(db_complaint)
     return db_complaint
 
+
 @router.get("/", response_model=List[ComplaintResponse])
 async def list_complaints(
-    skip: int = 0, 
-    limit: int = 100, 
-    db: AsyncSession = Depends(get_db)
+        skip: int = 0,
+        limit: int = 100,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_user)  # Added Auth
 ):
-    result = await db.execute(select(Complaint).offset(skip).limit(limit))
+    # CITIZENS only see their own records. OFFICIALS see all.
+    if current_user.role == UserRole.CITIZEN:
+        query = select(Complaint).filter(Complaint.user_id == current_user.id, Complaint.is_deleted == False)
+    else:
+        query = select(Complaint).filter(Complaint.is_deleted == False)
+
+    result = await db.execute(query.offset(skip).limit(limit))
     return result.scalars().all()
+
 
 @router.get("/{complaint_id}", response_model=ComplaintResponse)
 async def get_complaint(
-    complaint_id: int, 
-    db: AsyncSession = Depends(get_db)
+        complaint_id: int,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_user)  # Added Auth
 ):
-    """Retrieve a specific complaint by its ID."""
-    result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
+    result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id, Complaint.is_deleted == False))
     db_complaint = result.scalar_one_or_none()
-    
+
     if not db_complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
+
+    # SECURITY CHECK: Is the user an official or the owner?
+    if current_user.role == UserRole.CITIZEN and db_complaint.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to view this complaint")
+
     return db_complaint
 
 @router.post("/{complaint_id}/evidence")
 async def upload_evidence(
     complaint_id: int,
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user) # Added Auth
 ):
     # 1. Verify complaint exists
     result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
-    if not result.scalar():
+    db_complaint = result.scalar_one_or_none()
+
+    if not db_complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
+
+        # OWNERSHIP CHECK
+    if db_complaint.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only add evidence to your own complaints")
 
     # 1. Generate Hash
     f_hash = await get_file_hash(file)
@@ -97,18 +124,21 @@ async def upload_evidence(
 
 @router.patch("/{complaint_id}", response_model=ComplaintResponse)
 async def update_complaint(
-    complaint_id: int,
-    complaint_update: ComplaintUpdate,
-    db: AsyncSession = Depends(get_db)
+        complaint_id: int,
+        complaint_update: ComplaintUpdate,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_user)  # Added Auth
 ):
-    """Update complaint status or severity (Administrative action)."""
     result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
     db_complaint = result.scalar_one_or_none()
-    
+
     if not db_complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    # Update only the fields provided in the request
+    # SECURITY: Only owner can edit, or an Official/Admin
+    if current_user.role == UserRole.CITIZEN and db_complaint.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     update_data = complaint_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_complaint, key, value)
@@ -119,17 +149,24 @@ async def update_complaint(
 
 
 @router.delete("/{complaint_id}")
-async def delete_complaint(complaint_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_complaint(
+    complaint_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user) # Added Auth
+):
     result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
     db_complaint = result.scalar_one_or_none()
 
     if not db_complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    # PRODUCTION LOGIC: Soft Delete
+    # SECURITY: Only owner or Admin can delete
+    if current_user.role == UserRole.CITIZEN and db_complaint.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     db_complaint.is_deleted = True
     await db.commit()
-    return {"status": "success", "message": f"Complaint {complaint_id} archived (Soft Deleted)"}
+    return {"status": "success", "message": "Archived"}
 
 
 # @router.post("/{complaint_id}/analyze")
@@ -168,26 +205,22 @@ async def delete_complaint(complaint_id: int, db: AsyncSession = Depends(get_db)
 
 @router.post("/{complaint_id}/analyze")
 async def trigger_analysis(
-    complaint_id: int, 
-    db: AsyncSession = Depends(get_db)
+        complaint_id: int,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_user)  # Added Auth
 ):
-    """
-    Production-grade Asynchronous Endpoint:
-    1. Validates complaint existence.
-    2. Sets status to 'processing'.
-    3. Offloads AI work to Celery/Redis.
-    """
     result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
     db_complaint = result.scalar_one_or_none()
-    
+
     if not db_complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    # Update status so the frontend knows AI is working
+    # Only owner or official can trigger
+    if current_user.role == UserRole.CITIZEN and db_complaint.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     db_complaint.analysis_status = "processing"
     await db.commit()
-
-    # Trigger the background task (Celery)
     analyze_complaint_task.delay(complaint_id)
     
     return {
@@ -200,12 +233,21 @@ async def trigger_analysis(
 @router.get("/{complaint_id}/verify-integrity")
 async def verify_complaint_integrity(
     complaint_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user) # FIXED: Added Auth Gate
 ):
     # 1. Fetch current data from SQL
     result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
     db_complaint = result.scalar_one_or_none()
-    if not db_complaint or not db_complaint.blockchain_hash:
+
+    if not db_complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    # SECURITY: Only owner or Official can verify integrity
+    if current_user.role == UserRole.CITIZEN and db_complaint.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if not db_complaint.blockchain_hash:
         raise HTTPException(status_code=400, detail="Complaint not anchored on blockchain.")
 
     # 2. Get Evidence Hashes
@@ -238,32 +280,25 @@ async def verify_complaint_integrity(
 async def create_complaint_via_voice(
         location: str,
         file: UploadFile = File(...),
-        db: AsyncSession = Depends(get_db)
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_user)  # PROTECTED: Requires JWT
 ):
-    """
-    Production-Grade Voice Reporting:
-    1. Save audio file.
-    2. Transcribe using Whisper.
-    3. Create a Complaint record using the transcript as the description.
-    """
-    # 1. Save the audio temporarily
     temp_path = await save_upload_file(file)
-
-    # 2. Transcribe
     transcript = await stt_service.transcribe_audio(temp_path)
-    if not transcript:
-        raise HTTPException(status_code=500, detail="Could not process audio.")
 
-    # 3. Auto-generate a title using the transcript (using first 50 chars or AI)
+    if not transcript:
+        raise HTTPException(status_code=500, detail="Transcription failed.")
+
     generated_title = transcript[:50] + "..." if len(transcript) > 50 else transcript
 
-    # 4. Create Complaint
+    # Attach user_id to the voice report
     new_complaint = Complaint(
         title=f"Voice Report: {generated_title}",
         description=transcript,
-        complaint_type=ComplaintType.OTHERS,  # Default, AI will refine this in /analyze
+        complaint_type=ComplaintType.OTHERS,
         location=location,
-        status=ComplaintStatus.SUBMITTED
+        status=ComplaintStatus.SUBMITTED,
+        user_id=current_user.id
     )
 
     db.add(new_complaint)

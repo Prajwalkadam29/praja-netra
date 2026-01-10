@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from app.config import settings
 from app.api.v1.endpoints import complaints
 from app.database import engine, Base
-from app.api.v1.endpoints import complaints, admin # Add admin here
+from app.api.v1.endpoints import complaints, admin, auth # Add admin here
 
 # Lifespan context manager handles startup and shutdown logic
 @asynccontextmanager
@@ -32,6 +32,8 @@ app.include_router(
 )
 
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
 @app.get("/")
 async def health_check():

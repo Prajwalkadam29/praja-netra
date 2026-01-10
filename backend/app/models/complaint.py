@@ -39,3 +39,5 @@ class Complaint(Base):
     cluster_id = Column(Integer, ForeignKey("case_clusters.id"), nullable=True)
 
     is_deleted = Column(Boolean, default=False)
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
