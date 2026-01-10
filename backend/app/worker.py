@@ -4,6 +4,7 @@ from app.database import SessionLocal
 from app.models.complaint import Complaint
 from app.models.evidence import Evidence
 from app.models.cluster import CaseCluster
+from app.models.department import Department
 from app.services.ai_service import ai_service
 from app.services.gemini_service import extract_exif_data
 from app.services.embedding_service import embedding_service
@@ -163,6 +164,23 @@ async def process_analysis(complaint_id: int):
                     .values(cluster_id=new_cluster.id)
                 )
                 db_complaint.cluster_id = new_cluster.id
+
+        # 🚀 NEW: MODULE 8 - DEPARTMENT AUTO-ASSIGNMENT
+        logger.info(f"📂 Categorizing Department for ID {complaint_id}...")
+
+        # 1. Fetch all available departments
+        dept_result = await db.execute(select(Department))
+        all_departments = dept_result.scalars().all()
+
+        # 2. Ask AI to pick the best ID
+        assigned_dept_id = await ai_service.predict_department(
+            description_en=db_complaint.summary_en or db_complaint.description,
+            departments=all_departments
+        )
+
+        if assigned_dept_id:
+            db_complaint.department_id = assigned_dept_id
+            logger.info(f"📍 Automatically assigned to Department ID: {assigned_dept_id}")
 
         # 6. Persistence & Final Triage
         if is_urgent_text: final_score = max(final_score, 8.5)

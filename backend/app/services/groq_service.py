@@ -2,7 +2,7 @@ from groq import Groq
 from app.config import settings
 import json
 
-client = Groq(api_key=settings.GROQ_API_KEY)
+groq_client = Groq(api_key=settings.GROQ_API_KEY)
 
 async def analyze_complaint_text(text: str):
     """
@@ -33,9 +33,12 @@ async def analyze_complaint_text(text: str):
     }}
     """
     
-    # We are using the newer 'llama-3.3-70b-versatile' model
-    chat_completion = client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
+    # We can now use the global groq_client here as well:
+    chat_completion = groq_client.chat.completions.create(
+        messages=[
+            {"role": "system", "content": "You are a corruption triage assistant..."},
+            {"role": "user", "content": prompt}
+        ],
         model="llama-3.3-70b-versatile",
         response_format={"type": "json_object"}
     )
