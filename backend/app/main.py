@@ -1,20 +1,15 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.config import settings
-from app.api.v1.endpoints import complaints
 from app.database import engine, Base
-from app.api.v1.endpoints import complaints, admin, auth # Add admin here
+# Import the new routers
+from app.api.v1.endpoints import complaints, admin, auth, official, analytics
 
-# Lifespan context manager handles startup and shutdown logic
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic: Create database tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
-    yield  # The application runs here
-    
-    # Shutdown logic: Close database connections
+    yield
     await engine.dispose()
 
 app = FastAPI(
@@ -24,24 +19,34 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Include Routers
+# 1. Citizen Routes
 app.include_router(
-    complaints.router, 
-    prefix=f"{settings.API_V1_STR}/complaints", 
+    complaints.router,
+    prefix=f"{settings.API_V1_STR}/complaints",
     tags=["Complaints"]
 )
 
-app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+# 2. Official/Department Routes
+app.include_router(
+    official.router,
+    prefix=f"{settings.API_V1_STR}/official",
+    tags=["Official Management"]
+)
 
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+# 3. Analytics & Dashboard Data (Used by Admin/Official)
+app.include_router(
+    analytics.router,
+    prefix=f"{settings.API_V1_STR}/analytics",
+    tags=["Analytics"]
+)
+
+# 4. Auth & Admin
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 
 @app.get("/")
 async def health_check():
-    return {
-        "status": "online",
-        "project": settings.PROJECT_NAME,
-        "version": settings.VERSION
-    }
+    return {"status": "online", "project": settings.PROJECT_NAME}
 
 if __name__ == "__main__":
     import uvicorn

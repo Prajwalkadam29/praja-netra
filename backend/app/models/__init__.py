@@ -3,3 +3,5 @@ from .department import Department
 from .evidence import Evidence
 from .cluster import CaseCluster
 from .user import User
+from .social import Upvote
+from .notes import InternalNote

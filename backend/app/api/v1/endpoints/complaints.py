@@ -15,6 +15,8 @@ from app.services.blockchain_service import blockchain_service
 from app.services.stt_service import stt_service
 from app.api.deps import get_current_user
 from app.models.user import User, UserRole # Fixed Import
+from app.models.social import Upvote
+from sqlalchemy import func
 
 
 router = APIRouter()
@@ -321,3 +323,49 @@ async def create_complaint_via_voice(
         "complaint_id": new_complaint.id,
         "transcript": transcript
     }
+
+
+@router.post("/{complaint_id}/upvote")
+async def upvote_complaint(
+        complaint_id: int,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Allows a citizen to upvote a complaint to increase its visibility."""
+    # 1. Check if already upvoted
+    existing_upvote = await db.execute(
+        select(Upvote).filter(Upvote.user_id == current_user.id, Upvote.complaint_id == complaint_id)
+    )
+    if existing_upvote.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Already upvoted this complaint")
+
+    # 2. Add Upvote
+    new_upvote = Upvote(user_id=current_user.id, complaint_id=complaint_id)
+    db.add(new_upvote)
+
+    # 3. Optional: Boost Severity score slightly on upvote (Social Severity)
+    result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
+    db_complaint = result.scalar_one_or_none()
+    if db_complaint:
+        # Every 10 upvotes, increase severity by 1 (max 10)
+        db_complaint.severity_score = min(10, db_complaint.severity_score + 0.1)
+
+    await db.commit()
+    return {"status": "success", "message": "Upvoted"}
+
+
+@router.get("/feed/public", response_model=List[ComplaintResponse])
+async def get_public_feed(
+        skip: int = 0,
+        limit: int = 20,
+        db: AsyncSession = Depends(get_db)
+):
+    """Get recent public complaints for the 'Global Feed' page."""
+    # Only show complaints that are NOT anonymous and NOT deleted
+    query = select(Complaint).filter(
+        Complaint.is_anonymous == False,
+        Complaint.is_deleted == False
+    ).order_by(Complaint.filed_at.desc())
+
+    result = await db.execute(query.offset(skip).limit(limit))
+    return result.scalars().all()
