@@ -9,6 +9,7 @@ from app.services.ai_service import ai_service
 from app.services.gemini_service import extract_exif_data
 from app.services.embedding_service import embedding_service
 from app.services.blockchain_service import blockchain_service
+from app.services.notification_service import notification_service
 from sqlalchemy import select, update, func
 from datetime import datetime
 import asyncio
@@ -206,6 +207,27 @@ async def process_analysis(complaint_id: int):
         if tx_id:
             db_complaint.blockchain_hash = tx_id
             logger.info(f"🔒 Case Sealed! TXID: {tx_id}")
+
+        # 🚀 STEP 8: AUTOMATED DEPARTMENT NOTIFICATION
+        if db_complaint.department_id:
+            # Fetch the department's email
+            dept_res = await db.execute(select(Department).filter(Department.id == db_complaint.department_id))
+            dept_obj = dept_res.scalar_one_or_none()
+
+            if dept_obj and dept_obj.contact_email:
+                logger.info(f"📧 Sending notification to {dept_obj.name}...")
+
+                complaint_data_for_mail = {
+                    "id": db_complaint.id,
+                    "title": db_complaint.title_en or db_complaint.title,
+                    "severity": db_complaint.severity_score,
+                    "location": db_complaint.location,
+                    "summary": db_complaint.summary_en or db_complaint.description,
+                    "blockchain_hash": db_complaint.blockchain_hash
+                }
+
+                # We call this synchronously inside the worker as it's already a background task
+                notification_service.send_department_alert(dept_obj.contact_email, complaint_data_for_mail)
 
         await db.commit()
         logger.info(f"✅ Full Intelligence Loop Complete for ID {complaint_id}. Cluster ID: {db_complaint.cluster_id}")
