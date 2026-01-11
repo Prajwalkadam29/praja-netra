@@ -26,18 +26,15 @@ async def update_complaint_status(
     db: AsyncSession = Depends(get_db),
     current_official: User = Depends(require_official)
 ):
-    """Allows an official to move a complaint from 'submitted' to 'resolved' etc."""
     result = await db.execute(select(Complaint).filter(Complaint.id == complaint_id))
     db_complaint = result.scalar_one_or_none()
 
     if not db_complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    # SECURITY: Officials can only update status for complaints in THEIR department
-    if current_official.role == UserRole.OFFICIAL and db_complaint.department_id != current_official.id:
-        # Note: In a real system, you'd link the official to a Dept ID.
-        # For now, we assume officials can manage assigned cases.
-        pass
+    # FIX: Check department_id against department_id, NOT official.id
+    if db_complaint.department_id != current_official.department_id:
+        raise HTTPException(status_code=403, detail="You can only manage cases within your department")
 
     db_complaint.status = status_update.status
     await db.commit()
@@ -71,4 +68,19 @@ async def get_internal_notes(
     result = await db.execute(
         select(InternalNote).filter(InternalNote.complaint_id == complaint_id).order_by(InternalNote.created_at.desc())
     )
+    return result.scalars().all()
+
+
+# FIX: Update the dependency name to match your imported name
+@router.get("/complaints")
+async def get_assigned_complaints(
+        current_user: User = Depends(get_current_user), # Changed from get_current_active_user
+        db: AsyncSession = Depends(get_db)
+):
+    if current_user.role != UserRole.OFFICIAL:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # This logic is now correct assuming your SQL update was successful
+    query = select(Complaint).where(Complaint.department_id == current_user.department_id)
+    result = await db.execute(query)
     return result.scalars().all()

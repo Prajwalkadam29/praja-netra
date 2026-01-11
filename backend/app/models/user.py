@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Boolean, Enum
+from sqlalchemy import Column, Integer, String, Boolean, Enum, ForeignKey # Add ForeignKey
+from sqlalchemy.orm import relationship # Add relationship
 import enum
 from app.database import Base
 
@@ -16,4 +17,11 @@ class User(Base):
     google_id = Column(String, unique=True, index=True)
     hashed_password = Column(String, nullable=True)
     role = Column(Enum(UserRole), default=UserRole.CITIZEN)
+
+    # ADD THIS LINE
+    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
+
+    # Relationship to access department name easily
+    department = relationship("Department", back_populates="staff")
+
     is_active = Column(Boolean, default=True)

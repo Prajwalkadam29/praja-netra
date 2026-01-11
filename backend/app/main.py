@@ -1,9 +1,9 @@
-from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware  # Import this
 from app.config import settings
 from app.database import engine, Base
-# Import the new routers
 from app.api.v1.endpoints import complaints, admin, auth, official, analytics
+from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,6 +18,16 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan
 )
+
+# --- ADD THIS CORS CONFIGURATION ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"], # Allow your React dev server
+    allow_credentials=True,
+    allow_methods=["*"], # Allow all methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"], # Allow all headers
+)
+# -----------------------------------
 
 # 1. Citizen Routes
 app.include_router(
