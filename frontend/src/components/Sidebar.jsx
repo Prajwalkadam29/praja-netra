@@ -1,9 +1,11 @@
 import React, { useContext } from 'react';
 import { NavLink } from 'react-router-dom';
+import { ThemeContext } from '../context/ThemeContext';
 import { AuthContext } from '../context/AuthContext';
-import { LayoutDashboard, Map, FilePlus, LogOut, ShieldCheck, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Map, FilePlus, Sun, Moon, LogOut, ShieldCheck, BarChart3 } from 'lucide-react';
 
 const Sidebar = () => {
+    const { theme, toggleTheme } = useContext(ThemeContext);
   const { user, logout } = useContext(AuthContext);
 
   const citizenLinks = [
@@ -48,6 +50,11 @@ const Sidebar = () => {
           </NavLink>
         ))}
       </nav>
+
+      {/* Theme Toggle Button */}
+      <button onClick={toggleTheme} className="p-2 rounded-lg bg-gray-200 dark:bg-white/10 text-gray-600 dark:text-gray-300">
+  {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+</button>
 
       <button
         onClick={logout}

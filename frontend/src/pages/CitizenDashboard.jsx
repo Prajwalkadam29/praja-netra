@@ -43,7 +43,7 @@ const CitizenDashboard = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#050a15] text-white font-sans p-6 lg:p-10">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#050a15] text-gray-900 dark:text-white font-sans p-6 lg:p-10 transition-colors duration-300">
 
       {/* Navbar Section */}
       <nav className="flex justify-between items-center mb-12">

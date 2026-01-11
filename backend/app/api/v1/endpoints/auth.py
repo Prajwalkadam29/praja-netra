@@ -4,6 +4,12 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.services.auth_service import auth_service
+from pydantic import BaseModel
+
+
+class InternalLogin(BaseModel):
+    email: str
+    password: str
 
 router = APIRouter()
 
@@ -50,5 +56,31 @@ async def google_login(token: str = Body(..., embed=True), db: AsyncSession = De
             "full_name": user.full_name,
             "role": user.role.value,
             "department_id": user.department_id  # Add this line
+        }
+    }
+
+
+@router.post("/login/internal")
+async def internal_login(data: InternalLogin, db: AsyncSession = Depends(get_db)):
+    # Look for the user
+    result = await db.execute(select(User).filter(User.email == data.email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+         raise HTTPException(status_code=401, detail="User not found")
+
+    # This now does a plain text comparison
+    if not auth_service.verify_password(data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Password mismatch")
+
+    access_token = auth_service.create_access_token(data={"sub": user.email})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role.value,
+            "department_id": user.department_id
         }
     }
