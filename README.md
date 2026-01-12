@@ -33,16 +33,124 @@ Project Prajā-Netra is a production-grade, next-generation platform designed to
 
 ---
 
-## 🛠️ Technical Stack (Current)
-- **Framework:** FastAPI (Python 3.10+)
-- **Database:** PostgreSQL (Primary Store)
-- **Async Task Queue:** Celery + Redis
+## 🧠 The AI Engine: Where and How it is Used
+AI is not a wrapper in this project; it is the primary data processor. It is used in three specific areas:
+
+* **Automated Severity Scoring:** When a complaint is filed, the AI analyzes the text and images to assign a severity score (1-10). High scores (e.g., "Live wire on road") are automatically escalated.
+
+* **Multilingual Summarization:** Since citizens may report in local languages (Marathi/Hindi), the AI generates a concise English summary for official review, ensuring no data is lost in translation.
+
+* **Duplicate Detection:** The AI compares incoming reports against existing ones to identify "clusters" (e.g., 50 people reporting the same pothole), preventing department backlog and identifying hotspots.
+
+---
+
+## ⛓️ The Blockchain: What it is Doing
+
+Blockchain serves as the Immutable Truth Layer. While the main data lives in PostgreSQL for speed, the "Integrity Hash" lives on the ledger.
+
+* **Proof of Existence:** At the moment of filing, a cryptographic hash of the complaint is generated and "anchored" to the blockchain.
+
+* **Anti-Tamper Audit Trail:** If an official tries to delete a complaint or alter its filing date to hide negligence, the hash stored on the blockchain will no longer match the database record.
+
+* **Verifiable Resolution:** When a case is "Resolved," the final evidence is hashed again. Citizens can verify that the "After" state was officially logged and cannot be faked.
+
+---
+
+## 🛠️ Technical Stack
+- **Frontend:** React 18, Vite, Tailwind CSS, Chart.js.
+- **Backend:** FastAPI (Python 3.10+), SQLAlchemy (Async), Celery, Redis.
+- **Database:** PostgreSQL (Relational storage).
 - **AI Orchestration:**
   - **Groq (Llama 3.3 70B):** For lightning-fast multilingual text analysis and translation.
   - **Google Gemini 1.5 Flash:** For multimodal vision analysis and evidence cross-validation.
   - **Sentence-Transformers:** Local vector embedding generation (`all-MiniLM-L6-v2`).
 - **ORM:** SQLAlchemy 2.0 (Async)
 - **Validation:** Pydantic V2
+- **Integrity:** Bcrypt (Hashing), JWT (Sessions), Blockchain (Transparency).
+
+---
+
+## 📂 Repository Structure
+
+```
+praja-netra/
+├── frontend/                   # React Frontend
+│   ├── src/
+│   │   ├── api/                # Axios configuration & interceptors
+│   │   ├── context/            # Auth & Theme State Management
+│   │   ├── components/         # Reusable UI (Sidebar, KPI Cards)
+│   │   └── pages/              # Role-specific Dashboards
+│   ├── vercel.json             # Vercel Deployment Rules
+│   └── tailwind.config.js      # Custom Design System
+└── backend/                    # FastAPI Backend
+    ├── app/
+    │   ├── api/v1/endpoints/   # Auth, Complaints, & Admin Routes
+    │   ├── core/               # Configuration & Security (JWT)
+    │   ├── models/             # SQLAlchemy Database Schema
+    │   └── services/           # AI & Blockchain Logic
+    ├── fix_hash.py             # Security utility for credential seeding
+    └── requirements.txt        # Production dependencies
+```
+
+---
+
+## ⚙️ Installation & Setup
+
+### 1. Prerequisites
+* Node.js 18+
+* Python 3.10+
+* PostgreSQL 14+
+
+### 2. Clone the repo: 
+```
+git clone <repository_url>
+```
+
+### 3. Database Setup
+
+1. Create a database named `praja_netra` in pgAdmin.
+2. Seed the required Official and Admin accounts:
+```
+-- Seed Super Admin
+INSERT INTO users (email, full_name, role, hashed_password, is_active)
+VALUES ('admin.alpha@prajanetra.in', 'System Auditor Alpha', 'SUPER_ADMIN', 'password123', true);
+
+-- Seed Road Dept Official
+INSERT INTO users (email, full_name, role, department_id, hashed_password, is_active)
+VALUES ('road_officer@pmc.gov.in', 'PMC Road Officer', 'OFFICIAL', 1, 'password123', true);
+```
+
+### 4. Start Redis: 
+```
+docker run -p 6379:6379 redis
+```
+
+### 5. Run Worker: 
+```
+celery -A app.worker.celery_app worker --loglevel=info -P solo
+```
+
+### 6. Setup Env: 
+Create `.env` with `DATABASE_URL`, `GROQ_API_KEY`, `GEMINI_API_KEY`
+
+
+### 7. Backend Installation
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python -m app.main
+```
+
+### 8. Frontend Installation
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
 ---
 
@@ -52,20 +160,19 @@ Prajā-Netra uses a **distributed architecture** to ensure high performance unde
 2. **Message Broker (Redis):** Manages the queue of pending AI analyses.
 3. **Worker Layer (Celery):** Independent workers that perform heavy AI computations (Groq/Gemini calls) without slowing down the user experience.
 
-
-
 ---
 
-## 📁 API Documentation (Implemented)
+## 🔌 API Architecture (v1)
 
-### 📝 Complaint Management
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/v1/complaints/` | Submit a new complaint (Multilingual). |
-| `GET` | `/api/v1/complaints/` | List all complaints with pagination. |
-| `GET` | `/api/v1/complaints/{id}` | Get detailed status of a specific complaint. |
-| `PATCH` | `/api/v1/complaints/{id}` | Update status or severity (Admin). |
-| `DELETE` | `/api/v1/complaints/{id}` | Remove complaint and associated evidence. |
+The system uses a RESTful API built with FastAPI, utilizing Pydantic for strict data validation.
+
+### Public / Citizen APIs
+| Method | Endpoint             | Description                                                    |
+|:-------|:---------------------|:---------------------------------------------------------------|
+| `POST` | `/auth/login/google` | Handles OAuth2 tokens and returns a JWT.                       |
+| `POST` | `/complaints/`       | Accepts multipart form data (Title, Description, Images, GPS). |
+| `GET`  | `/complaints/my`     | Retrieves the logged-in citizen's history.                     |
+
 
 **POST Body Example:**
 ```json
@@ -79,10 +186,12 @@ Prajā-Netra uses a **distributed architecture** to ensure high performance unde
 ```
 
 ### 📁 Evidence & Intelligence
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/v1/complaints/{id}/evidence` | Upload images/documents as proof. |
-| `POST` | `/api/v1/complaints/{id}/analyze` | **Trigger Background AI Analysis.** (Returns immediate receipt). |
+| Method | Endpoint                           | Description                                                                    |
+|:-------|:-----------------------------------|:-------------------------------------------------------------------------------|
+| `POST` | `/auth/login/internal`             | Secure endpoint for staff using plain-text (dev) or hashed (prod) credentials. |
+| `POST` | `/official/complaints`             | Returns cases filtered by the official's department ID.                        |
+| `POST` | `/official/complaints/{id}/status` | Transitions a case status and triggers a blockchain update.                    |
+| `POST` | `/analytics/stats/summary`         | Aggregates city-wide data for the Super Admin dashboard.                       |
 
 **Analyze Response Example:**
 ```json
@@ -116,16 +225,14 @@ GEMINI_API_KEY=your_gemini_key
 ---
 
 ## 📅 Future Roadmap
-- **Module 6: Blockchain Integrity:** Hashing report data on-chain to prevent record tampering.
-- **Module 7: Anonymization Layer:** Auto-redacting PII (Names/Faces) from public-facing data.
-- **Module 8: Dashboard & GIS:** Next.js frontend with heatmaps showing "Corruption Hotspots" in Pune.
-- **Module 9: Notifications:** Real-time updates via WebSockets and SMS/Email.
+- **Smart Contracts:** Automated penalty collection for departments that miss SLA deadlines.
+- **Edge AI:** Real-time object detection on the citizen's phone to verify issues before they are even submitted.
+- **Predictive Maintenance:** AI models to predict where water leakages or road cracks are likely to occur next.
 
 ---
 
-## 🛠️ Setup & Installation
-1. **Clone the repo:** `git clone <repository_url>`
-2. **Setup Env:** Create `.env` with `DATABASE_URL`, `GROQ_API_KEY`, `GEMINI_API_KEY`.
-3. **Start Redis:** `docker run -p 6379:6379 redis`
-4. **Run Worker:** `celery -A app.worker.celery_app worker --loglevel=info -P solo`
-5. **Run Server:** `python -m app.main`
+## Project Demo Video: 
+
+[Demo Video Links](https://drive.google.com/drive/folders/1oQgb7lOd2AhQGzmGiaZh1zdwz_e5VA_m?usp=sharing)
+
+---
